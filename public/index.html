@@ -121,6 +121,8 @@
     await loadSkills();
   }
 
+  let previousSkillValue = null;
+
   async function loadSkills() {
     const res = await fetch('/api/skills-list');
     if (!res.ok) return;
@@ -132,7 +134,23 @@
       opt.textContent = skill.label;
       skillSelect.appendChild(opt);
     });
+    previousSkillValue = skillSelect.value;
   }
+
+  skillSelect.addEventListener('change', () => {
+    if (history.length > 0) {
+      const confirmed = window.confirm(
+        'Skill wechseln löscht den aktuellen Chatverlauf. Fortfahren?'
+      );
+      if (!confirmed) {
+        skillSelect.value = previousSkillValue;
+        return;
+      }
+    }
+    history = [];
+    chatLog.innerHTML = '';
+    previousSkillValue = skillSelect.value;
+  });
 
   loginBtn.addEventListener('click', async () => {
     loginError.textContent = '';
