@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>enercity Skill-Portal</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f5f4;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .wrap { width: 100%; max-width: 640px; padding: 24px; }
+  h1 { font-size: 1.3rem; color: #1a1a1a; }
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  input, select, textarea, button { font: inherit; }
+  input[type="text"], select, textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #d5d7d5;
+    border-radius: 8px;
+    margin-top: 6px;
+  }
+  button {
+    background: #00893d;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  button:hover { background: #00722f; }
+  button:disabled { background: #a9a9a9; cursor: not-allowed; }
+  .error { color: #c0392b; margin-top: 8px; font-size: 0.9rem; min-height: 1.2em; }
+  .msg { margin: 10px 0; padding: 10px 14px; border-radius: 8px; line-height: 1.4; white-space: pre-wrap; }
+  .msg.user { background: #e8f5ee; margin-left: 40px; }
+  .msg.assistant { background: #f0f0f0; margin-right: 40px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .topbar button { margin-top: 0; background: transparent; color: #555; border: 1px solid #d5d7d5; }
+  #chat-log { max-height: 50vh; overflow-y: auto; margin-bottom: 12px; }
+  .hidden { display: none; }
+  label { font-size: 0.9rem; color: #444; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>enercity Skill-Portal</h1>
+    <button id="logout-btn" class="hidden">Abmelden</button>
+  </div>
+
+  <div id="login-view" class="card">
+    <p>Bitte gib deinen Zugangscode ein.</p>
+    <input type="text" id="code-input" placeholder="Zugangscode" autocomplete="off" />
+    <button id="login-btn">Einloggen</button>
+    <div id="login-error" class="error"></div>
+  </div>
+
+  <div id="app-view" class="card hidden">
+    <p id="welcome"></p>
+    <label for="skill-select">Skill auswählen</label>
+    <select id="skill-select"></select>
+
+    <div id="chat-log"></div>
+
+    <label for="message-input">Nachricht</label>
+    <textarea id="message-input" rows="3" placeholder="Deine Nachricht..."></textarea>
+    <button id="send-btn">Senden</button>
+    <div id="chat-error" class="error"></div>
+  </div>
+</div>
+
+<script>
+  const loginView = document.getElementById('login-view');
+  const appView = document.getElementById('app-view');
+  const logoutBtn = document.getElementById('logout-btn');
+  const codeInput = document.getElementById('code-input');
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+  const welcome = document.getElementById('welcome');
+  const skillSelect = document.getElementById('skill-select');
+  const chatLog = document.getElementById('chat-log');
+  const messageInput = document.getElementById('message-input');
+  const sendBtn = document.getElementById('send-btn');
+  const chatError = document.getElementById('chat-error');
+
+  let history = []; // { role, content }[]
+
+  async function checkSession() {
+    const res = await fetch('/api/me');
+    if (res.ok) {
+      const data = await res.json();
+      showApp(data.name);
+    } else {
+      showLogin();
+    }
+  }
+
+  function showLogin() {
+    loginView.classList.remove('hidden');
+    appView.classList.add('hidden');
+    logoutBtn.classList.add('hidden');
+  }
+
+  async function showApp(name) {
+    loginView.classList.add('hidden');
+    appView.classList.remove('hidden');
+    logoutBtn.classList.remove('hidden');
+    welcome.textContent = `Angemeldet als ${name}`;
+    await loadSkills();
+  }
+
+  async function loadSkills() {
+    const res = await fetch('/api/skills-list');
+    if (!res.ok) return;
+    const data = await res.json();
+    skillSelect.innerHTML = '';
+    data.skills.forEach((skill) => {
+      const opt = document.createElement('option');
+      opt.value = skill.id;
+      opt.textContent = skill.label;
+      skillSelect.appendChild(opt);
+    });
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    loginError.textContent = '';
+    const code = codeInput.value.trim();
+    if (!code) return;
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      codeInput.value = '';
+      showApp(data.name);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      loginError.textContent = data.error || 'Login fehlgeschlagen.';
+    }
+  });
+
+  codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loginBtn.click();
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    history = [];
+    chatLog.innerHTML = '';
+    showLogin();
+  });
+
+  function renderMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.textContent = text;
+    chatLog.appendChild(div);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  sendBtn.addEventListener('click', async () => {
+    chatError.textContent = '';
+    const text = messageInput.value.trim();
+    if (!text) return;
+
+    renderMessage('user', text);
+    history.push({ role: 'user', content: text });
+    messageInput.value = '';
+    sendBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillId: skillSelect.value, messages: history }),
+      });
+
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        chatError.textContent = data.error || 'Fehler.';
+        return;
+      }
+
+      renderMessage('assistant', data.reply);
+      history.push({ role: 'assistant', content: data.reply });
+    } catch (e) {
+      chatError.textContent = 'Netzwerkfehler.';
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
+  messageInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  checkSession();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "enercity-skill-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Geschütztes Mini-Portal, über das enercity ausgewählte Momentum-Skills testen kann, ohne die Prompts dahinter zu sehen.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1"
+  }
+}
